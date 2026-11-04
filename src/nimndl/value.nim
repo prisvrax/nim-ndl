@@ -2,14 +2,14 @@ import std/[sequtils, tables]
 
 type
   NdlIntKind* = enum
-    nikU64, nikI64, nikRaw
+    nikPos, nikNeg, nikRaw
 
   NdlInt* = object
     case kind*: NdlIntKind
-    of NdlIntKind.nikU64:
-      valUint*: uint64
-    of NdlIntKind.nikI64:
-      valInt*: int64
+    of NdlIntKind.nikPos:
+      valPos*: uint64
+    of NdlIntKind.nikNeg:
+      valNeg*: int64
     of NdlIntKind.nikRaw:
       valBig*: string
 
@@ -60,40 +60,40 @@ proc `[]=`*(val: var NdlValue, aIdx: int, aVal: NdlValue) =
   val.valArr[aIdx] = aVal
 
 proc initNdlNull*(): NdlValue =
-  NdlValue(kind: nvNull)
+  NdlValue(kind: NdlValueKind.nvNull)
 
 proc initNdlBool*(val: bool): NdlValue =
-  NdlValue(kind: nvBool, valBool: val)
+  NdlValue(kind: NdlValueKind.nvBool, valBool: val)
 
 proc initNdlInt*(val: int64): NdlValue =
   if val >= 0:
-    NdlValue(kind: nvInt, valInt: NdlInt(kind: nikU64, valUint: uint64(val)))
+    NdlValue(kind: NdlValueKind.nvInt, valInt: NdlInt(kind: NdlIntKind.nikPos, valPos: uint64(val)))
   else:
-    NdlValue(kind: nvInt, valInt: NdlInt(kind: nikI64, valInt: val))
+    NdlValue(kind: NdlValueKind.nvInt, valInt: NdlInt(kind: NdlIntKind.nikNeg, valNeg: val))
 
 proc initNdlInt*(val: uint64): NdlValue =
-  NdlValue(kind: nvInt, valInt: NdlInt(kind: nikU64, valUint: val))
+  NdlValue(kind: NdlValueKind.nvInt, valInt: NdlInt(kind: NdlIntKind.nikPos, valPos: val))
 
 proc initNdlBigInt*(rawVal: string): NdlValue =
-  NdlValue(kind: nvInt, valInt: NdlInt(kind: nikRaw, valBig: rawVal))
+  NdlValue(kind: NdlValueKind.nvInt, valInt: NdlInt(kind: NdlIntKind.nikRaw, valBig: rawVal))
 
 proc initNdlReal*(val: float64): NdlValue =
-  NdlValue(kind: nvReal, valReal: NdlReal(kind: nrkF64, valFloat: val))
+  NdlValue(kind: NdlValueKind.nvReal, valReal: NdlReal(kind: NdlRealKind.nrkF64, valFloat: val))
 
 proc initNdlBigReal*(rawVal: string): NdlValue =
-  NdlValue(kind: nvReal, valReal: NdlReal(kind: nrkRaw, valBig: rawVal))
+  NdlValue(kind: NdlValueKind.nvReal, valReal: NdlReal(kind: NdlRealKind.nrkRaw, valBig: rawVal))
 
 proc initNdlString*(val: string): NdlValue =
-  NdlValue(kind: nvString, valStr: val)
+  NdlValue(kind: NdlValueKind.nvString, valStr: val)
 
 proc initNdlArray*(arr: openArray[NdlValue] = []): NdlValue =
-  NdlValue(kind: nvArray, valArr: arr.toSeq())
+  NdlValue(kind: NdlValueKind.nvArray, valArr: arr.toSeq())
 
 proc initNdlMap*(orderTbl: OrderedTable[string, NdlValue]): NdlValue =
-  NdlValue(kind: nvMap, valMap: orderTbl)
+  NdlValue(kind: NdlValueKind.nvMap, valMap: orderTbl)
 
 proc initNdlMap*(pairs: openArray[(string, NdlValue)] = []): NdlValue =
   var ndlMap = initOrderedTable[string, NdlValue]()
   for (pairK, pairV) in pairs:
     ndlMap[pairK] = pairV
-  NdlValue(kind: nvMap, valMap: ndlMap)
+  NdlValue(kind: NdlValueKind.nvMap, valMap: ndlMap)
