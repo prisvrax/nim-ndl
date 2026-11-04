@@ -11,7 +11,7 @@ type
     of NdlIntKind.nikNeg:
       valNeg*: int64
     of NdlIntKind.nikRaw:
-      valBig*: string
+      valRaw*: string
 
   NdlRealKind* = enum
     nrkF64, nrkRaw
@@ -21,7 +21,7 @@ type
     of NdlRealKind.nrkF64:
       valFloat*: float64
     of NdlRealKind.nrkRaw:
-      valBig*: string
+      valRaw*: string
 
   NdlValueKind* = enum
     nvNull, nvBool, nvInt, nvReal, nvString, nvArray, nvMap
@@ -75,13 +75,13 @@ proc initNdlInt*(val: uint64): NdlValue =
   NdlValue(kind: NdlValueKind.nvInt, valInt: NdlInt(kind: NdlIntKind.nikPos, valPos: val))
 
 proc initNdlBigInt*(rawVal: string): NdlValue =
-  NdlValue(kind: NdlValueKind.nvInt, valInt: NdlInt(kind: NdlIntKind.nikRaw, valBig: rawVal))
+  NdlValue(kind: NdlValueKind.nvInt, valInt: NdlInt(kind: NdlIntKind.nikRaw, valRaw: rawVal))
 
 proc initNdlReal*(val: float64): NdlValue =
   NdlValue(kind: NdlValueKind.nvReal, valReal: NdlReal(kind: NdlRealKind.nrkF64, valFloat: val))
 
 proc initNdlBigReal*(rawVal: string): NdlValue =
-  NdlValue(kind: NdlValueKind.nvReal, valReal: NdlReal(kind: NdlRealKind.nrkRaw, valBig: rawVal))
+  NdlValue(kind: NdlValueKind.nvReal, valReal: NdlReal(kind: NdlRealKind.nrkRaw, valRaw: rawVal))
 
 proc initNdlString*(val: string): NdlValue =
   NdlValue(kind: NdlValueKind.nvString, valStr: val)

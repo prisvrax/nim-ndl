@@ -28,7 +28,7 @@ suite "NdlValue construction":
   test "int raw":
     let val = initNdlBigInt("123456789012345678901234567890")
     check val.valInt.kind == NdlIntKind.nikRaw
-    check val.valInt.valBig == "123456789012345678901234567890"
+    check val.valInt.valRaw == "123456789012345678901234567890"
 
   test "real f64":
     let val = initNdlReal(3.14)
@@ -38,7 +38,7 @@ suite "NdlValue construction":
   test "real raw":
     let val = initNdlBigReal("1e9")
     check val.valReal.kind == NdlRealKind.nrkRaw
-    check val.valReal.valBig == "1e9"
+    check val.valReal.valRaw == "1e9"
 
   test "string":
     check initNdlString("hello").valStr == "hello"

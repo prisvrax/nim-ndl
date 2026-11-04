@@ -1,4 +1,4 @@
-import std/[strutils, unittest]
+import std/[math, strutils, unittest]
 import pkg/[results]
 import nimndl
 import nimndl/[number]
@@ -117,3 +117,28 @@ suite "NdlInt parse":
     check parseNdlInt("1a").isErr()
     check parseNdlInt("12a3").isErr()
     check parseNdlInt("-1a").isErr()
+
+suite "NdlReal parse":
+  test "real f64":
+    check parseNdlReal("0").value().kind == NdlRealKind.nrkF64
+    check parseNdlReal("0.0").value().kind == NdlRealKind.nrkF64
+    check parseNdlReal("0e999").value().kind == NdlRealKind.nrkF64
+    check parseNdlReal("0.0e-999").value().kind == NdlRealKind.nrkF64
+    check parseNdlReal("-0.0").value().kind == NdlRealKind.nrkF64
+    check parseNdlReal("-0.0").value().valFloat == 0.0
+    check parseNdlReal("-0.0").value().valFloat.classify() == FloatClass.fcNegZero
+
+  test "real underflow":
+    check parseNdlReal("1e-999").value().kind == nrkRaw
+    check parseNdlReal("1e-999").value().valRaw == "1e-999"
+    check parseNdlReal("-1e-999").value().kind == nrkRaw
+    check parseNdlReal("0.1e-400").value().kind == nrkRaw
+
+  test "real overflow":
+    check parseNdlReal("1e999").value().kind == nrkRaw
+    check parseNdlReal("-1e999").value().kind == nrkRaw
+
+  test "real subnormal":
+    check parseNdlReal("4.9e-324").value().kind == nrkF64
+    check parseNdlReal("4.9e-324").value().valFloat > 0.0
+    check parseNdlReal("4.9e-324").value().valFloat.classify() == FloatClass.fcSubnormal
