@@ -1,4 +1,4 @@
-import std/[math, strutils, unittest]
+import std/[math, unittest]
 import pkg/[results]
 import nimndl
 
@@ -36,3 +36,31 @@ suite "ident":
   test "非法首字符仍报错":
     check lexAll("$").isErr
     check lexAll("@a").error.kind == lexError
+
+suite "quoted":
+  test "raw string":
+    check lexAll("`hello`").get[0].text == "hello"
+    check lexAll("`a\nb`").get[0].text == "a\nb"
+    check lexAll("`it's \"fine\"`").get[0].text == "it's \"fine\""
+    check lexAll("``").get[0].text == ""
+    check lexAll("`unterminated").isErr
+  
+  test "string":
+    check lexAll("\"hello\"").get[0].text == "hello"
+    check lexAll("\"line\\nbreak\"").get[0].text == "line\nbreak"
+    check lexAll("\"it's\"").get[0].text == "it's"
+    check lexAll("\"say \\\"hi\\\"\"").get[0].text == "say \"hi\""
+    check lexAll("\"\\u{4F60}\\u{597D}\"").get[0].text == "你好"
+    check lexAll("\"\"").get[0].text == ""
+    check lexAll("\"unterminated").isErr()
+    check lexAll("\"bad \\x\"").isErr()
+    check lexAll("\"\\u{110000}\"").isErr()
+    check lexAll("\"\\u{D800}\"").isErr()
+    check lexAll("\"\\u{}\"").isErr()
+    check lexAll("\"\\u{1234567}\"").isErr()
+
+  test "quoted key":
+    check lexAll("'weird key'").get[0].text == "weird key"
+    check lexAll("'it\\'s'").get[0].text == "it's"
+    check lexAll("'k.1'").get[0].text == "k.1"
+    check lexAll("'can\\\"quote'").get[0].text == "can\"quote"
