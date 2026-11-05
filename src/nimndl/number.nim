@@ -14,24 +14,24 @@ template finishParseInt(negative: bool, num: uint64, raw: string) =
     return Rt.ok(NdlInt(kind: NdlIntKind.nikNeg, valNeg: low(int64)))
   return Rt.ok(NdlInt(kind: NdlIntKind.nikRaw, valRaw: raw))
 
-proc parseNdlIntBin(negative: bool, nums: string, raw: string): Result[NdlInt, NdlError]
+proc parseNdlIntBin(negative: bool, nums: string, start: int, raw: string): Result[NdlInt, NdlError]
   {.inline, raises: [].} =
   type Rt = Result[NdlInt, NdlError]
-  var start = 0
-  while start < nums.len and nums[start] == '0':
+  var start = start
+  while start < nums.len() and nums[start] == '0':
     inc start
   if nums.len() - start > 64:
-    return Rt.ok(NdlInt(kind: nikRaw, valRaw: raw))
+    return Rt.ok(NdlInt(kind: NdlIntKind.nikRaw, valRaw: raw))
   var numB: uint64
   if parseBin(nums, numB, start) != nums.len() - start:
     return Rt.err(NdlError(kind: NdlErrorKind.parseIntError, numRaw: raw))
   finishParseInt(negative, numB, raw)
 
-proc parseNdlIntHex(negative: bool, nums: string, raw: string): Result[NdlInt, NdlError]
+proc parseNdlIntHex(negative: bool, nums: string, start: int, raw: string): Result[NdlInt, NdlError]
   {.inline, raises: [].} =
   type Rt = Result[NdlInt, NdlError]
-  var start = 0
-  while start < nums.len and nums[start] == '0':
+  var start = start
+  while start < nums.len() and nums[start] == '0':
     inc start
   if nums.len() - start > 16:
     return Rt.ok(NdlInt(kind: NdlIntKind.nikRaw, valRaw: raw))
@@ -51,17 +51,15 @@ proc parseNdlInt*(raw: string): Result[NdlInt, NdlError] {.raises: [].} =
 
   # bin: 0b
   if numBd.len() >= 2 and numBd[0] == '0' and numBd[1].toLowerAscii() == 'b':
-    let nums = numBd[2 .. ^1]
-    if nums.len() == 0:
+    if numBd.len() == 2:
       return Rt.err(NdlError(kind: NdlErrorKind.parseIntError, numRaw: raw))
-    return parseNdlIntBin(negative, nums, raw)
+    return parseNdlIntBin(negative, numBd, 2, raw)
 
   # hex: 0x
   if numBd.len() >= 2 and numBd[0] == '0' and numBd[1].toLowerAscii() == 'x':
-    let nums = numBd[2 .. ^1].toLowerAscii()
-    if nums.len() == 0:
+    if numBd.len() == 2:
       return Rt.err(NdlError(kind: NdlErrorKind.parseIntError, numRaw: raw))
-    return parseNdlIntHex(negative, nums, raw)
+    return parseNdlIntHex(negative, numBd, 2, raw)
 
   # dec
   if numBd.len() > 1 and numBd[0] == '0':
@@ -72,6 +70,35 @@ proc parseNdlInt*(raw: string): Result[NdlInt, NdlError] {.raises: [].} =
   for numi in numBd:
     if numi notin {'0'..'9'}:
       return Rt.err(NdlError(kind: NdlErrorKind.parseIntError, numRaw: raw))
+    let numiCurr = uint64(ord(numi) - ord('0'))
+    if overflow(numD, numiCurr, high(uint64)):
+      return Rt.ok(NdlInt(kind: NdlIntKind.nikRaw, valRaw: raw))
+    numD = numD * 10 + numiCurr
+
+  finishParseInt(negative, numD, raw)
+
+proc parseNdlIntUnchecked*(raw: string): Result[NdlInt, NdlError] {.raises: [].} =
+  type Rt = Result[NdlInt, NdlError]
+
+  let
+    negative = raw.len() > 0 and raw[0] == '-'
+    numBd = if negative: raw[1 .. ^1] else: raw
+
+  # bin: 0b
+  if numBd.len >= 2 and numBd[0] == '0':
+    case numBd[1].toLowerAscii()
+    of 'b':
+      return parseNdlIntBin(negative, numBd, 2, raw)
+    of 'x':
+      return parseNdlIntHex(negative, numBd, 2, raw)
+    else:
+      discard
+
+  # dec
+  if numBd.len() > 20:
+    return Rt.ok(NdlInt(kind: NdlIntKind.nikRaw, valRaw: raw))
+  var numD: uint64 = 0
+  for numi in numBd:
     let numiCurr = uint64(ord(numi) - ord('0'))
     if overflow(numD, numiCurr, high(uint64)):
       return Rt.ok(NdlInt(kind: NdlIntKind.nikRaw, valRaw: raw))
@@ -97,7 +124,61 @@ proc mantissaIsZero(raw: string): bool =
     inc i
   true
 
-proc parseNdlReal*(raw: string): Result[NdlReal, NdlError] {.raises: [].} =
+proc isValidNdlReal(raw: string): bool =
+  if raw in ["inf", "-inf", "nan"]:
+    return true
+
+  let rawL = raw.len()
+  var idx: int = 0
+
+  if idx < rawL and raw[idx] == '-':
+    inc idx
+  if idx >= rawL:
+    return false
+
+  # integer part: 0 | [1-9][0-9]*
+  if raw[idx] == '0':
+    inc idx
+  elif raw[idx] in {'1'..'9'}:
+    inc idx
+    while idx < rawL and raw[idx] in {'0'..'9'}:
+      inc idx
+  else:
+    return false
+
+  # fractional part: .[0-9]+
+  var hasDot = false
+  if idx < rawL and raw[idx] == '.':
+    hasDot = true
+    inc idx
+    if idx >= rawL or raw[idx] notin {'0'..'9'}:
+      return false
+    while idx < rawL and raw[idx] in {'0'..'9'}:
+      inc idx
+
+  # exponent part: [eE]-?(0|[1-9][0-9]*)
+  var hasExp = false
+  if idx < rawL and raw[idx] in {'e', 'E'}:
+    hasExp = true
+    inc idx
+    if idx < rawL and raw[idx] == '-':
+      inc idx
+    if idx >= rawL or raw[idx] notin {'0'..'9'}:
+      return false
+    if raw[idx] == '0':
+      inc idx
+      if idx < rawL and raw[idx] in {'0'..'9'}:
+        return false
+    else:
+      while idx < rawL and raw[idx] in {'0'..'9'}:
+        inc idx
+
+  if not hasDot and not hasExp:
+    return false
+
+  return idx == rawL
+
+proc parseNdlRealUnchecked*(raw: string): Result[NdlReal, NdlError] {.raises: [].} =
   type Rt = Result[NdlReal, NdlError]
   case raw
   of "inf":
@@ -118,3 +199,8 @@ proc parseNdlReal*(raw: string): Result[NdlReal, NdlError] {.raises: [].} =
     return Rt.ok(NdlReal(kind: NdlRealKind.nrkRaw, valRaw: raw))
   else:
     return Rt.ok(NdlReal(kind: NdlRealKind.nrkF64, valFloat: numF))
+
+proc parseNdlReal*(raw: string): Result[NdlReal, NdlError] {.raises: [].} =
+  if not isValidNdlReal(raw):
+    return Result[NdlReal, NdlError].err(NdlError(kind: NdlErrorKind.parseRealError, numRaw: raw))
+  return parseNdlRealUnchecked(raw)

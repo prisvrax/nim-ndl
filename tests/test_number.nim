@@ -120,7 +120,7 @@ suite "NdlInt parse":
 
 suite "NdlReal parse":
   test "real f64":
-    check parseNdlReal("0").value().kind == NdlRealKind.nrkF64
+    check parseNdlReal("0").isErr()
     check parseNdlReal("0.0").value().kind == NdlRealKind.nrkF64
     check parseNdlReal("0e999").value().kind == NdlRealKind.nrkF64
     check parseNdlReal("0.0e-999").value().kind == NdlRealKind.nrkF64
@@ -142,3 +142,23 @@ suite "NdlReal parse":
     check parseNdlReal("4.9e-324").value().kind == nrkF64
     check parseNdlReal("4.9e-324").value().valFloat > 0.0
     check parseNdlReal("4.9e-324").value().valFloat.classify() == FloatClass.fcSubnormal
+  
+  test "real invalid":
+    check parseNdlReal(".").isErr()
+    check parseNdlReal(".0").isErr()
+    check parseNdlReal("1.").isErr()
+    check parseNdlReal("10.").isErr()
+    check parseNdlReal("10.1a").isErr()
+    check parseNdlReal("12a.3").isErr()
+    check parseNdlReal("-1.a").isErr()
+
+  test "real leading-zeros":
+    check parseNdlReal("0.00").value().valFloat == 0.0'f64
+    check parseNdlReal("00.1").isErr()
+    check parseNdlReal("001.2").isErr()
+    check parseNdlReal("-0.00").value().valFloat == -0.0'f64
+    check parseNdlReal("-00.1").isErr()
+    check parseNdlReal("-001.2").isErr()
+    check parseNdlReal("1.2e0").value().valFloat == 1.2'f64
+    check parseNdlReal("1.2e-0").value().valFloat == 1.2'f64
+    check parseNdlReal("1.2e-01").isErr()
