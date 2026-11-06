@@ -64,3 +64,29 @@ suite "quoted":
     check lexAll("'it\\'s'").get[0].text == "it's"
     check lexAll("'k.1'").get[0].text == "k.1"
     check lexAll("'can\\\"quote'").get[0].text == "can\"quote"
+
+suite "number":
+  test "int":
+    let
+      num1 = lexAll("123").value()[0]
+      num2 = lexAll("-123").value()[0]
+      num3 = lexAll("0").value()[0]
+      num4 = lexAll("-0").value()[0]
+      num5 = lexAll("inf").value()[0]
+      num6 = lexAll("-inf").value()[0]
+    check num1.kind == NdlTokenKind.tkInt
+    check num1.raw == "123"
+    check num2.kind == NdlTokenKind.tkInt
+    check num2.raw == "-123"
+    check num3.kind == NdlTokenKind.tkInt
+    check num3.raw == "0"
+    check num4.kind == NdlTokenKind.tkInt
+    check num4.raw == "-0"
+    check lexAll("000").isErr()
+    check lexAll("001").isErr()
+    check lexAll("-000").isErr()
+    check lexAll("-001").isErr()
+    check num5.kind == NdlTokenKind.tkIdent
+    check num5.text == "inf"
+    check num6.kind == NdlTokenKind.tkIdent
+    check num6.text == "-inf"

@@ -26,7 +26,7 @@ proc advance(lex: var NdlLexer) {.inline.} =
 
 proc skipWhitespace(lex: var NdlLexer): bool =
   var skip = false
-  while not lex.atEnd and lex.input[lex.pos] in {' ', '\t', '\r', '\n'}:
+  while not lex.atEnd() and lex.input[lex.pos] in {' ', '\t', '\r', '\n'}:
     skip = true
     lex.advance()
   return skip
@@ -143,11 +143,102 @@ proc scanQuotedKey(lex: var NdlLexer, hadSpace: bool): Result[NdlToken, NdlError
     kind: NdlTokenKind.tkQuotedKey,
     line: lineStart, col: colStart, leadingSpace: hadSpace, text: token.get))
 
+proc scanNumberBin(lex: var NdlLexer, hadSpace: bool, negative: bool): Result[NdlToken, NdlError] =
+  let
+    ctnStart = lex.pos
+    lineStart = lex.line
+    colStart = lex.col
+  lex.advance()
+  lex.advance()
+  while not lex.atEnd() and lex.input[lex.pos] in {'0', '1'}:
+    lex.advance()
+  if lex.pos - ctnStart <= 2:
+    return err(lexErrorAt(lex, "binary number needs at least 1 digits"))
+  let raw = lex.input[(if negative: ctnStart - 1 else: ctnStart) ..< lex.pos]
+  return ok(NdlToken(
+    kind: NdlTokenKind.tkInt, line: lineStart, col: colStart, raw: raw, leadingSpace: hadSpace))
+
+proc scanNumberHex(lex: var NdlLexer, hadSpace: bool, negative: bool): Result[NdlToken, NdlError] =
+  let
+    ctnStart = lex.pos
+    lineStart = lex.line
+    colStart = lex.col
+  lex.advance()
+  lex.advance()
+  while not lex.atEnd() and lex.input[lex.pos] in {'0'..'9', 'a'..'f', 'A'..'F'}:
+    lex.advance()
+  if lex.pos - ctnStart <= 2:
+    return err(lexErrorAt(lex, "hexdecimal number needs at least 1 digits"))
+  let raw = lex.input[(if negative: ctnStart - 1 else: ctnStart) ..< lex.pos]
+  return ok(NdlToken(
+    kind: NdlTokenKind.tkInt, line: lineStart, col: colStart, raw: raw, leadingSpace: hadSpace))
+
+proc scanNumber(lex: var NdlLexer, hadSpace: bool): Result[NdlToken, NdlError] =
+  let
+    ctnStart = lex.pos
+    lineStart = lex.line
+    colStart = lex.col
+    negative = lex.input[lex.pos] == '-'
+
+  if negative:
+    lex.advance()
+    if lex.atEnd():
+      return err(lexErrorAt(lex, "'-' must be followed by a digit"))
+
+  if lex.input[lex.pos] == '0' and lex.pos + 1 < lex.input.len():
+    let nextChr = lex.input[lex.pos + 1]
+    if nextChr in {'b', 'B'}:
+      return lex.scanNumberBin(hadSpace, negative)
+    elif nextChr in {'x', 'X'}:
+      return lex.scanNumberHex(hadSpace, negative)
+
+  if lex.input[lex.pos] == '0':
+    lex.advance()
+    if not lex.atEnd() and lex.input[lex.pos] in {'0'..'9'}:
+      return err(lexErrorAt(lex, "leading zeros not allowed"))
+  else:
+    lex.advance()
+    while not lex.atEnd() and lex.input[lex.pos] in {'0'..'9'}:
+      lex.advance()
+
+  var isReal = false
+  if not lex.atEnd() and lex.input[lex.pos] == '.':
+    isReal = true
+    lex.advance()
+    if lex.atEnd() or lex.input[lex.pos] notin {'0'..'9'}:
+      return err(lexErrorAt(lex, "expected digit after '.'"))
+    while not lex.atEnd() and lex.input[lex.pos] in {'0'..'9'}:
+      lex.advance()
+
+  if not lex.atEnd() and lex.input[lex.pos] in {'e', 'E'}:
+    isReal = true
+    lex.advance()
+    if not lex.atEnd() and lex.input[lex.pos] == '-':
+      lex.advance()
+    if lex.atEnd() or lex.input[lex.pos] notin {'0'..'9'}:
+      return err(lexErrorAt(lex, "expected digit in exponent"))
+    if lex.input[lex.pos] == '0':
+      lex.advance()
+      if not lex.atEnd() and lex.input[lex.pos] in {'0'..'9'}:
+        return err(lexErrorAt(lex, "leading zeros in exponent not allowed"))
+    else:
+      while not lex.atEnd() and lex.input[lex.pos] in {'0'..'9'}:
+        lex.advance()
+
+  let raw = lex.input[ctnStart ..< lex.pos]
+  if isReal:
+    return ok(NdlToken(
+      kind: NdlTokenKind.tkReal,
+      line: lineStart, col: colStart, raw: raw, leadingSpace: hadSpace))
+  return ok(NdlToken(
+    kind: NdlTokenKind.tkInt,
+    line: lineStart, col: colStart, raw: raw, leadingSpace: hadSpace))
+
 proc scanNdlToken(lex: var NdlLexer): Result[NdlToken, NdlError] =
   let hadSpace = lex.skipWhitespace()
-  if lex.atEnd:
-    return ok(
-      NdlToken(kind: NdlTokenKind.tkEof, line: lex.line, col: lex.col, leadingSpace: hadSpace))
+  if lex.atEnd():
+    return ok(NdlToken(
+      kind: NdlTokenKind.tkEof, line: lex.line, col: lex.col, leadingSpace: hadSpace))
 
   let
     startLine = lex.line
@@ -183,6 +274,22 @@ proc scanNdlToken(lex: var NdlLexer): Result[NdlToken, NdlError] =
     lex.scanString(hadSpace)
   of '\'':
     lex.scanQuotedKey(hadSpace)
+  of '0'..'9':
+    lex.scanNumber(hadSpace)
+  of '-':
+    if lex.pos + 1 < lex.input.len() and lex.input[lex.pos + 1] in {'0'..'9'}:
+      lex.scanNumber(hadSpace)
+    elif lex.pos + 3 < lex.input.len() and
+      lex.input[lex.pos + 1 ..< lex.pos + 4] in ["inf", "INF"]:
+      lex.advance()
+      lex.advance()
+      lex.advance()
+      lex.advance()
+      ok(NdlToken(
+        kind: NdlTokenKind.tkIdent,
+        line: startLine, col: startCol, leadingSpace: hadSpace, text: "-inf"))
+    else:
+      err(lexErrorAt(lex, "'-' must be followed by digit or 'inf'"))
   else:
     err(NdlError(
       kind: NdlErrorKind.lexError,
@@ -190,7 +297,7 @@ proc scanNdlToken(lex: var NdlLexer): Result[NdlToken, NdlError] =
       lexLine: startLine, lexCol: startCol))
 
 proc peek*(lex: var NdlLexer): Result[NdlToken, NdlError] =
-  if lex.peeked.isSome:
+  if lex.peeked.isSome():
     return ok(lex.peeked.get)
   let token = lex.scanNdlToken()
   if token.isOk():
@@ -211,6 +318,6 @@ proc lexAll*(input: string): Result[seq[NdlToken], NdlError] =
   while true:
     let nxtToken = ?lex.next()
     tokens.add(nxtToken)
-    if nxtToken.kind == tkEof:
+    if nxtToken.kind == NdlTokenKind.tkEof:
       break
   ok(tokens)
