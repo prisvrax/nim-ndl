@@ -90,3 +90,70 @@ suite "number":
     check num5.text == "inf"
     check num6.kind == NdlTokenKind.tkIdent
     check num6.text == "-inf"
+
+  test "real":
+    let
+      num1 = lexAll("123.456").value()[0]
+      num2 = lexAll("-123.456").value()[0]
+      num3 = lexAll("0.0").value()[0]
+      num4 = lexAll("-0.0").value()[0]
+    check num1.kind == NdlTokenKind.tkReal
+    check num1.raw == "123.456"
+    check num2.kind == NdlTokenKind.tkReal
+    check num2.raw == "-123.456"
+    check num3.kind == NdlTokenKind.tkReal
+    check num3.raw == "0.0"
+    check num4.kind == NdlTokenKind.tkReal
+    check num4.raw == "-0.0"
+    check lexAll("00.0").isErr()
+    check lexAll("00.1").isErr()
+    check lexAll("-00.0").isErr()
+    check lexAll("-00.1").isErr()
+    check lexAll("0.").isErr()
+    check lexAll("-0.").isErr()
+    check lexAll("-.1").isErr()
+    let numDot1 = lexAll(".1").value()
+    check numDot1.len() == 3
+    check numDot1[0].kind == NdlTokenKind.tkDot
+    check numDot1[1].kind == NdlTokenKind.tkInt
+    check numDot1[1].raw == "1"
+
+    let
+      num5 = lexAll("0e123").value()[0]
+      num6 = lexAll("-0e123").value()[0]
+      num7 = lexAll("12.3e456").value()[0]
+      num8 = lexAll("-123e456").value()[0]
+      num9 = lexAll("0e0").value()[0]
+      num10 = lexAll("-0e0").value()[0]
+      num11 = lexAll("-11e-0").value()[0]
+
+    check num5.kind == NdlTokenKind.tkReal
+    check num5.raw == "0e123"
+    check num6.kind == NdlTokenKind.tkReal
+    check num6.raw == "-0e123"
+    check num7.kind == NdlTokenKind.tkReal
+    check num7.raw == "12.3e456"
+    check num8.kind == NdlTokenKind.tkReal
+    check num8.raw == "-123e456"
+    check lexAll("0123e-456").isErr()
+    check lexAll("-00e-456").isErr()
+    check num9.kind == NdlTokenKind.tkReal
+    check num9.raw == "0e0"
+    check num10.kind == NdlTokenKind.tkReal
+    check num10.raw == "-0e0"
+    check num11.kind == NdlTokenKind.tkReal
+    check num11.raw == "-11e-0"
+    check lexAll("13e+1").isErr()
+    check lexAll("15e").isErr()
+    check lexAll("-e16").isErr()
+
+    let
+      numDot2 = lexAll("17e1.7").value()
+      numDot3 = lexAll("-1.8e1.8").value()
+    check numDot2.len() == 4
+    check numDot2[0].kind == NdlTokenKind.tkReal
+    check numDot2[0].raw == "17e1"
+    check numDot2[1].kind == NdlTokenKind.tkDot
+    check numDot3.len() == 4
+    check numDot3[0].raw == "-1.8e1"
+    check numDot3[2].kind == NdlTokenKind.tkInt
