@@ -1,7 +1,8 @@
 type NdlErrorKind* = enum
   parseIntError,
   parseRealError,
-  lexError
+  lexError,
+  parseError
 
 type NdlError* = object
   case kind*: NdlErrorKind
@@ -11,3 +12,7 @@ type NdlError* = object
     lexMsg*: string
     lexLine*: int
     lexCol*: int
+  of NdlErrorKind.parseError:
+    parseMsg*: string
+    parseLine*: int
+    parseCol*: int
