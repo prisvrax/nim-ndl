@@ -2,7 +2,7 @@ import std/[math, strutils, tables, unittest]
 import results
 import nimndl
 
-suite "parseDocument skeleton":
+suite "document parser":
   test "empty document":
     let emptyDoc = parseDocument("")
     check emptyDoc.isOk()
@@ -28,3 +28,53 @@ suite "parseDocument skeleton":
     check parseDocument("null").value().kind == NdlValueKind.nvNull
     check parseDocument("inf").value().valReal.valFloat == Inf
     check parseDocument("nan").value().valReal.valFloat.classify() == FloatClass.fcNan
+
+suite "array parser":
+  test "empty array":
+    let emptyArr = parseDocument("[]").value()
+    check emptyArr.kind == nvArray
+    check emptyArr.valArr.len() == 0
+
+  test "single element":
+    let singleElemArr = parseDocument("[1]").value()
+    check singleElemArr.kind == nvArray
+    check singleElemArr.valArr.len() == 1
+    check singleElemArr.valArr[0].valInt.valPos == 1'u64
+
+  test "multiple elements":
+    let multiElemArr = parseDocument("[1 2 3]").value()
+    check multiElemArr.kind == nvArray
+    check multiElemArr.valArr.len() == 3
+    check multiElemArr.valArr[0].valInt.valPos == 1'u64
+    check multiElemArr.valArr[1].valInt.valPos == 2'u64
+    check multiElemArr.valArr[2].valInt.valPos == 3'u64
+
+  test "mixed types":
+    let mixedTypesArr = parseDocument("[1 \"two\" true null]").value()
+    check mixedTypesArr.kind == nvArray
+    check mixedTypesArr.valArr.len() == 4
+    check mixedTypesArr.valArr[0].kind == nvInt
+    check mixedTypesArr.valArr[1].kind == nvString
+    check mixedTypesArr.valArr[2].kind == nvBool
+    check mixedTypesArr.valArr[3].kind == nvNull
+
+  test "nested array":
+    let nestedArrArr = parseDocument("[[1 2] [3 4]]").value()
+    check nestedArrArr.kind == nvArray
+    check nestedArrArr.valArr.len() == 2
+    check nestedArrArr.valArr[0].valArr.len() == 2
+    check nestedArrArr.valArr[1].valArr[1].valInt.valPos == 4'u64
+
+  test "missing separator":
+    check parseDocument("[1 2]").isOk()
+    check parseDocument("[1/*c*/2]").isOk()
+    check parseDocument("[1 2a3]").isErr()
+
+  test "unclosed bracket error":
+    check parseDocument("[").isErr()
+    check parseDocument("[1").isErr()
+    check parseDocument("[1 2").isErr()
+
+  test "array trailing token":
+    check parseDocument("[1] 2").isErr()
+    check parseDocument("[] []").isErr()

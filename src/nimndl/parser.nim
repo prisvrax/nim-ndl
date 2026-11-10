@@ -25,36 +25,58 @@ proc parseErrorAt(prs: NdlParser, msg: string): NdlError =
   NdlError(
     kind: parseError, parseMsg: msg, parseLine: prs.current.line, parseCol: prs.current.col)
 
+proc parseValue(prs: var NdlParser): Result[NdlValue, NdlError]
+proc parsePrimitive(prs: var NdlParser): Result[NdlValue, NdlError]
+proc parseArray(prs: var NdlParser): Result[NdlValue, NdlError]
+proc parseMap(prs: var NdlParser): Result[NdlValue, NdlError]
+
+proc parseValue(prs: var NdlParser): Result[NdlValue, NdlError] =
+  case prs.current.kind
+  of NdlTokenKind.tkLBracket:
+    parseArray(prs)
+  of NdlTokenKind.tkLBrace:
+    parseMap(prs)
+  of NdlTokenKind.tkString, NdlTokenKind.tkRawString,
+     NdlTokenKind.tkInt, NdlTokenKind.tkReal,
+     NdlTokenKind.tkIdent:
+    parsePrimitive(prs)
+  of NdlTokenKind.tkQuotedKey:
+    err(parseErrorAt(prs, "single-quoted key cannot be a value"))
+  of NdlTokenKind.tkRBracket, NdlTokenKind.tkRBrace:
+    err(parseErrorAt(prs, "unexpected closing bracket"))
+  else:
+    err(parseErrorAt(prs, "expected a value"))
+
 proc parsePrimitive(prs: var NdlParser): Result[NdlValue, NdlError] =
   let currTok = prs.current
   case currTok.kind
   of NdlTokenKind.tkString, NdlTokenKind.tkRawString:
-    discard prs.advance()
+    ?prs.advance()
     ok(initNdlString(currTok.text))
   of NdlTokenKind.tkInt:
     let rawToken = parseNdlInt(currTok.raw)
-    discard prs.advance()
+    ?prs.advance()
     ok(NdlValue(kind: NdlValueKind.nvInt, valInt: ?rawToken))
   of NdlTokenKind.tkReal:
     let rawToken = parseNdlReal(currTok.raw)
-    discard prs.advance()
+    ?prs.advance()
     ok(NdlValue(kind: NdlValueKind.nvReal, valReal: ?rawToken))
   of NdlTokenKind.tkIdent:
     case currTok.text
     of "true":
-      discard prs.advance()
+      ?prs.advance()
       ok(initNdlBool(true))
     of "false":
-      discard prs.advance()
+      ?prs.advance()
       ok(initNdlBool(false))
     of "null":
-      discard prs.advance()
+      ?prs.advance()
       ok(initNdlNull())
     of "inf":
-      discard prs.advance()
+      ?prs.advance()
       ok(initNdlReal(Inf))
     of "nan":
-      discard prs.advance()
+      ?prs.advance()
       ok(initNdlReal(NaN))
     else:
       err(parseErrorAt(prs, "unexpected ident: " & currTok.text))
@@ -63,13 +85,37 @@ proc parsePrimitive(prs: var NdlParser): Result[NdlValue, NdlError] =
   else:
     err(parseErrorAt(prs, "expected a value"))
 
+proc parseArray(prs: var NdlParser): Result[NdlValue, NdlError] =
+  ?prs.advance()
+
+  var valArrs: seq[NdlValue] = newSeq[NdlValue]()
+  if prs.current.kind == NdlTokenKind.tkRBracket:
+    ?prs.advance()
+    return ok(initNdlArray(valArrs))
+  valArrs.add(?prs.parseValue())
+
+  while prs.current.kind != NdlTokenKind.tkRBracket:
+    if prs.current.kind == NdlTokenKind.tkEof:
+      return err(parseErrorAt(prs, "unterminated array"))
+    if not prs.current.leadingSpace:
+      return err(parseErrorAt(prs, "expected separator between array elements"))
+    valArrs.add(?prs.parseValue())
+  ?prs.advance()
+  ok(initNdlArray(valArrs))
+
+proc parseMap(prs: var NdlParser): Result[NdlValue, NdlError] =
+  err(parseErrorAt(prs, "map not implemented yet"))
+
 proc parseDocument*(input: string): Result[NdlValue, NdlError] =
   var psr = ?initParser(input)
   if psr.current.kind == NdlTokenKind.tkEof:
     return ok(initNdlMap())
   case psr.current.kind
   of NdlTokenKind.tkLBracket:
-    discard
+    let val = ?parseArray(psr)
+    if psr.current.kind != NdlTokenKind.tkEof:
+      return err(parseErrorAt(psr, "unexpected token after document"))
+    return ok(val)
   of NdlTokenKind.tkLBrace:
     return err(parseErrorAt(psr, "root map must omit '{}' braces"))
   of NdlTokenKind.tkString, NdlTokenKind.tkRawString, NdlTokenKind.tkInt, NdlTokenKind.tkReal:
