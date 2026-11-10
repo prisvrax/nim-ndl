@@ -24,12 +24,53 @@ proc advance(lex: var NdlLexer) {.inline.} =
       inc lex.col
     inc lex.pos
 
-proc skipWhitespace(lex: var NdlLexer): bool =
-  var skip = false
-  while not lex.atEnd() and lex.input[lex.pos] in {' ', '\t', '\r', '\n'}:
-    skip = true
-    lex.advance()
-  return skip
+proc skipTrivia(lex: var NdlLexer): Result[bool, NdlError] =
+  var skipped = false
+  while not lex.atEnd():
+    let curr = lex.input[lex.pos]
+    if curr in {' ', '\t', '\r', '\n'}:
+      skipped = true
+      lex.advance()
+    elif curr == '/' and lex.pos + 1 < lex.input.len():
+      let nxt = lex.input[lex.pos + 1]
+      if nxt == '/':
+        skipped = true
+        while not lex.atEnd() and lex.input[lex.pos] notin {'\r', '\n'}:
+          lex.advance()
+      elif nxt == '*':
+        skipped = true
+        let
+          lineStart = lex.line
+          colStart = lex.col
+        # '/'
+        lex.advance()
+        # '*'
+        lex.advance()
+        var depth = 1
+        while depth > 0:
+          if lex.atEnd():
+            return err(NdlError(
+              kind: NdlErrorKind.lexError,
+              lexMsg: "unterminated block comment",
+              lexLine: lineStart, lexCol: colStart))
+          if lex.pos + 1 < lex.input.len():
+            if lex.input[lex.pos] == '/' and lex.input[lex.pos + 1] == '*':
+              inc depth
+              lex.advance()
+              lex.advance()
+            elif lex.input[lex.pos] == '*' and lex.input[lex.pos + 1] == '/':
+              dec depth
+              lex.advance()
+              lex.advance()
+            else:
+              lex.advance()
+          else:
+            lex.advance()
+      else:
+        break
+    else:
+      break
+  return ok(skipped)
 
 template lexErrorAt(lex: NdlLexer, msg: string): NdlError =
   NdlError(kind: NdlErrorKind.lexError, lexMsg: msg, lexLine: lex.line, lexCol: lex.col)
@@ -235,7 +276,7 @@ proc scanNumber(lex: var NdlLexer, hadSpace: bool): Result[NdlToken, NdlError] =
     line: lineStart, col: colStart, raw: raw, leadingSpace: hadSpace))
 
 proc scanNdlToken(lex: var NdlLexer): Result[NdlToken, NdlError] =
-  let hadSpace = lex.skipWhitespace()
+  let hadSpace = ?lex.skipTrivia()
   if lex.atEnd():
     return ok(NdlToken(
       kind: NdlTokenKind.tkEof, line: lex.line, col: lex.col, leadingSpace: hadSpace))

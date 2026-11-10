@@ -67,6 +67,7 @@ suite "array parser":
 
   test "missing separator":
     check parseDocument("[1 2]").isOk()
+    check parseDocument("[1\n2]").isOk()
     check parseDocument("[1/*c*/2]").isOk()
     check parseDocument("[1 2a3]").isErr()
 
