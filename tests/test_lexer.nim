@@ -35,7 +35,7 @@ suite "ident":
 
   test "非法首字符仍报错":
     check lexAll("$").isErr
-    check lexAll("@a").error.kind == lexError
+    check lexAll("@a").error().kind == lexError
 
 suite "quoted":
   test "raw string":
