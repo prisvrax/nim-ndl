@@ -79,3 +79,33 @@ suite "array parser":
   test "array trailing token":
     check parseDocument("[1] 2").isErr()
     check parseDocument("[] []").isErr()
+
+suite "map parser":
+  test "key path":
+    let val = parseDocument("a.b.c 1").value()
+    check val.kind == NdlValueKind.nvMap
+    check val.valMap.hasKey("a")
+    check val["a"].valMap.hasKey("b")
+    check val["a"]["b"]["c"].valInt.valPos == 1'u64
+    check parseDocument("a .b 1").isErr()
+    check parseDocument("a. b 1").isErr()
+
+  test "quoted key":
+    let
+      val1 = parseDocument("'weird key' 1").value()
+      val2 = parseDocument("'a.b' 1").value()
+    check val1.valMap.hasKey("weird key")
+    check val1["weird key"].valInt.valPos == 1'u64
+    check val2.valMap.hasKey("a.b")
+    check val2["a.b"].valInt.valPos == 1'u64
+    check parseDocument("'null' 1").isOk()
+    check parseDocument("'true' 1").isOk()
+
+  test "reserved keyword unquoted key":
+    check parseDocument("null 1").isErr()
+    check parseDocument("true 1").isErr()
+    check parseDocument("inf 1").isErr()
+
+  test "no separator between key and value":
+    check parseDocument("a{1}").isErr()
+    check parseDocument("a\"x\"").isErr()
