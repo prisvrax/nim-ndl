@@ -1,4 +1,4 @@
-import std/[options, strutils, tables, unicode]
+import std/[tables]
 import pkg/[results]
 import ./[token, value, error, lexer, number]
 

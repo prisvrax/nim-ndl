@@ -1,4 +1,4 @@
-import std/[sequtils, strutils, tables]
+import std/[sequtils, tables]
 
 type
   NdlIntKind* = enum
