@@ -16,3 +16,14 @@ type NdlError* = object
     parseMsg*: string
     parseLine*: int
     parseCol*: int
+
+func `$`*(e: NdlError): string =
+  case e.kind
+  of NdlErrorKind.parseIntError:
+    "parseIntError: " & e.numRaw
+  of NdlErrorKind.parseRealError:
+    "parseRealError: " & e.numRaw
+  of NdlErrorKind.lexError:
+    "lexError at " & $e.lexLine & ":" & $e.lexCol & ": " & e.lexMsg
+  of NdlErrorKind.parseError:
+    "parseError at " & $e.parseLine & ":" & $e.parseCol & ": " & e.parseMsg

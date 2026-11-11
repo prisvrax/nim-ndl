@@ -1,4 +1,4 @@
-import std/[sequtils, tables]
+import std/[sequtils, strutils, tables]
 
 type
   NdlIntKind* = enum
@@ -42,6 +42,59 @@ type
       valArr*: seq[NdlValue]
     of NdlValueKind.nvMap:
       valMap*: OrderedTable[string, NdlValue]
+
+func `$`*(ndlIntVal: NdlInt): string =
+  case ndlIntVal.kind
+  of NdlIntKind.nikPos:
+    $ndlIntVal.valPos
+  of NdlIntKind.nikNeg:
+    $ndlIntVal.valNeg
+  of NdlIntKind.nikRaw:
+    ndlIntVal.valRaw
+
+func `$`*(ndlRealVal: NdlReal): string =
+  case ndlRealVal.kind
+  of NdlRealKind.nrkF64:
+    $ndlRealVal.valFloat
+  of NdlRealKind.nrkRaw:
+    ndlRealVal.valRaw
+
+func `$`*(ndlVal: NdlValue): string =
+  case ndlVal.kind
+  of NdlValueKind.nvNull:
+    return "null"
+  of NdlValueKind.nvBool:
+    return if ndlVal.valBool: "true" else: "false"
+  of NdlValueKind.nvInt:
+    return $ndlVal.valInt
+  of NdlValueKind.nvReal:
+    return $ndlVal.valReal
+  of NdlValueKind.nvString:
+    return "\"" & ndlVal.valStr & "\""
+  of NdlValueKind.nvArray:
+    var
+      arr = "["
+      first = true
+    for ele in ndlVal.valArr:
+      if not first:
+        arr.add(" ")
+      first = false
+      arr.add(`$`(ele))
+    arr.add("]")
+    return arr
+  of NdlValueKind.nvMap:
+    var
+      map = "{"
+      first = true
+    for mapK, mapV in ndlVal.valMap:
+      if not first:
+        map.add(" ")
+      first = false
+      map.add(mapK)
+      map.add(" ")
+      map.add(`$`(mapV))
+    map.add("}")
+    return map
 
 proc `[]`*(val: NdlValue, mKey: string): NdlValue =
   doAssert val.kind == nvMap
