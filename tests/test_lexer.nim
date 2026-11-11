@@ -1,4 +1,4 @@
-import std/[math, unittest]
+import std/[math, strutils, unittest]
 import pkg/[results]
 import nimndl
 
@@ -157,3 +157,35 @@ suite "number":
     check numDot3.len() == 4
     check numDot3[0].raw == "-1.8e1"
     check numDot3[2].kind == NdlTokenKind.tkInt
+
+suite "comment":
+  test "line comment":
+    check lexAll("/").isErr()
+    let tArrs = lexAll("a // comment\nb").value()
+    check tArrs[0].text == "a"
+    check tArrs[1].text == "b"
+    check tArrs[1].leadingSpace == true
+    check tArrs[1].line == 2
+
+  test "line comment EOF":
+    check lexAll("a // comment").value[1].kind == NdlTokenKind.tkEof
+
+  test "block comment":
+    let tArrs = lexAll("a /* c */ b").value()
+    check tArrs[0].text == "a"
+    check tArrs[1].text == "b"
+    check tArrs[1].leadingSpace == true
+
+  test "nested block comment":
+    let tArrs = lexAll("a /* x /* y */ z */ b").value()
+    check tArrs[0].text == "a"
+    check tArrs[1].text == "b"
+
+  test "comment separator":
+    check lexAll("a/*c*/b").value()[1].leadingSpace == true
+    check lexAll("[1/*c*/2]").value()[2].leadingSpace == true
+
+  test "unterminated block comment":
+    let errCom = lexAll("/* unterminated")
+    check errCom.isErr()
+    check errCom.tryError().lexMsg.contains("unterminated")
