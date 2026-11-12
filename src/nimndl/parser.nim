@@ -184,14 +184,14 @@ proc parseMap(prs: var NdlParser): Result[NdlValue, NdlError] =
   ?prs.advance()
   return ok(map)
 
-proc parseRootPairs(prs: var NdlParser): Result[NdlValue, NdlError] =
-  var m = initNdlMap()
-  ?mergeMaps(m, ?prs.parsePair())
+proc parseObject(prs: var NdlParser): Result[NdlValue, NdlError] =
+  var obj = initNdlMap()
+  ?mergeMaps(obj, ?prs.parsePair())
   while prs.current.kind != NdlTokenKind.tkEof:
     if not prs.current.leadingSpace:
       return err(parseErrorAt(prs, "expected separator between pairs"))
-    ?mergeMaps(m, ?prs.parsePair())
-  return ok(m)
+    ?mergeMaps(obj, ?prs.parsePair())
+  return ok(obj)
 
 proc parseDocument*(input: string): Result[NdlValue, NdlError] =
   var psr = ?initParser(input)
@@ -199,26 +199,26 @@ proc parseDocument*(input: string): Result[NdlValue, NdlError] =
     return ok(initNdlMap())
   case psr.current.kind
   of NdlTokenKind.tkLBracket:
-    let val = ?parseArray(psr)
+    let val = ?psr.parseArray()
     if psr.current.kind != NdlTokenKind.tkEof:
-      return err(parseErrorAt(psr, "unexpected token after document"))
+      return err(psr.parseErrorAt("unexpected token after document"))
     return ok(val)
   of NdlTokenKind.tkLBrace:
-    return err(parseErrorAt(psr, "root map must omit '{}' braces"))
+    return err(psr.parseErrorAt("root map must omit '{}' braces"))
   of NdlTokenKind.tkString, NdlTokenKind.tkRawString, NdlTokenKind.tkInt, NdlTokenKind.tkReal:
-    let val = ?parsePrimitive(psr)
+    let val = ?psr.parsePrimitive()
     if psr.current.kind != NdlTokenKind.tkEof:
-      return err(parseErrorAt(psr, "unexpected token after document"))
+      return err(psr.parseErrorAt("unexpected token after document"))
     return ok(val)
   of NdlTokenKind.tkIdent:
     if psr.current.text in reservedKeywords:
-      let val = ?parsePrimitive(psr)
+      let val = ?psr.parsePrimitive()
       if psr.current.kind != NdlTokenKind.tkEof:
-        return err(parseErrorAt(psr, "unexpected token after document"))
+        return err(psr.parseErrorAt("unexpected token after document"))
       return ok(val)
     else:
-      return parseRootPairs(psr)
+      return psr.parseObject()
   of NdlTokenKind.tkQuotedKey:
-    return parseRootPairs(psr)
+    return psr.parseObject()
   else:
-    return err(parseErrorAt(psr, "unexpected token at document root"))
+    return err(psr.parseErrorAt("unexpected token at document root"))
