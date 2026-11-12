@@ -100,6 +100,10 @@ suite "map parser":
     check parseDocument("a.b {c 1} a.b {d 2}").value()["a"]["b"]["d"].valInt.valPos == 2'u64
     check parseDocument("a {b 1} a.c 2").value()["a"]["c"].valInt.valPos == 2'u64
     check parseDocument("a {b 1}").value()["a"]["b"].valInt.valPos == 1'u64
+    check parseDocument("a.b.c.d.e 1 a.b.c.d.f 2").value(
+      )["a"]["b"]["c"]["d"]["e"].valInt.valPos == 1'u64
+    check parseDocument("a.b.c.d.e 1 a.b.c.d.f 2").value(
+      )["a"]["b"]["c"]["d"]["f"].valInt.valPos == 2'u64
 
   test "quoted key":
     let

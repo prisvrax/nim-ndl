@@ -132,12 +132,32 @@ proc parseKeyPath(prs: var NdlParser): Result[seq[string], NdlError] =
     mapKs.add(?prs.parseKey())
   ok(mapKs)
 
-proc ensureMapPath(
-  dst: var NdlValue, mapKs: seq[string], idx: int,
-  lineAt: int, colAt: int): Result[void, NdlError] =
-  if idx >= mapKs.len() - 1:
-    return ok()
-  let currK = mapKs[idx]
+proc insertAtPath(
+  dst: var NdlValue, mapKs: seq[string], depth: int,
+  prs: var NdlParser, lineAt, colAt: int): Result[void, NdlError] =
+  let currK = mapKs[depth]
+
+  if depth == mapKs.len() - 1:
+    if prs.current.kind == NdlTokenKind.tkLBrace:
+      if currK notin dst.valMap:
+        dst.valMap[currK] = initNdlMap()
+      elif dst.valMap[currK].kind != NdlValueKind.nvMap:
+        return err(NdlError(
+          kind: NdlErrorKind.parseError,
+          parseMsg: "conflicting values for key '" & currK & "'",
+          parseLine: lineAt, parseCol: colAt))
+      return prs.parseMap(dst.valMap[currK])
+    else:
+      let mapV = ?prs.parseValue()
+      if currK notin dst.valMap:
+        dst.valMap[currK] = mapV
+        return ok()
+      else:
+        return err(NdlError(
+          kind: NdlErrorKind.parseError,
+          parseMsg: "conflicting values for key '" & currK & "'",
+          parseLine: lineAt, parseCol: colAt))
+
   if currK notin dst.valMap:
     dst.valMap[currK] = initNdlMap()
   elif dst.valMap[currK].kind != NdlValueKind.nvMap:
@@ -145,55 +165,18 @@ proc ensureMapPath(
       kind: NdlErrorKind.parseError,
       parseMsg: "conflicting values for key '" & currK & "'",
       parseLine: lineAt, parseCol: colAt))
-  ?ensureMapPath(dst.valMap[currK], mapKs, idx + 1, lineAt, colAt)
-  ok()
-
-proc getMapPath(
-  dst: var NdlValue, mapKs: seq[string], idx: int = 0, endIdx: int): var NdlValue =
-  if idx == endIdx:
-    return dst
-  getMapPath(dst.valMap[mapKs[idx]], mapKs, idx + 1, endIdx)
-
-proc insertKey(
-  dst: var NdlValue, mapK: string, mapV: NdlValue,
-  lineAt: int, colAt: int): Result[void, NdlError] =
-  if mapK notin dst.valMap:
-    dst.valMap[mapK] = mapV
-  elif dst.valMap[mapK].kind == NdlValueKind.nvMap and mapV.kind == NdlValueKind.nvMap:
-    for srcK, srcV in mapV.valMap:
-      ?insertKey(dst.valMap[mapK], srcK, srcV, lineAt, colAt)
-  else:
-    return err(NdlError(
-      kind: NdlErrorKind.parseError,
-      parseMsg: "conflicting values for key '" & mapK & "'",
-      parseLine: lineAt, parseCol: colAt))
-  ok()
+  insertAtPath(dst.valMap[currK], mapKs, depth + 1, prs, lineAt, colAt)
 
 proc insertPair(dst: var NdlValue, prs: var NdlParser): Result[void, NdlError] =
   let
     lineAt = prs.current.line
     colAt = prs.current.col
     currMapKs = ?prs.parseKeyPath()
-    targetK = currMapKs[^1]
   if prs.current.kind in {NdlTokenKind.tkEof, NdlTokenKind.tkRBrace, NdlTokenKind.tkRBracket}:
     return err(parseErrorAt(prs, "expected value after key"))
   if not prs.current.leadingSpace:
     return err(parseErrorAt(prs, "expected separator between key and value"))
-
-  ?ensureMapPath(dst, currMapKs, 0, lineAt, colAt)
-  let targetPtr = addr getMapPath(dst, currMapKs, 0, currMapKs.len() - 1)
-  if prs.current.kind == NdlTokenKind.tkLBrace:
-    if targetPtr[].valMap.hasKey(targetK):
-      if targetPtr[].valMap[targetK].kind != NdlValueKind.nvMap:
-        return err(NdlError(
-          kind: NdlErrorKind.parseError,
-          parseMsg: "conflicting values for key '" & targetK & "'",
-          parseLine: lineAt, parseCol: colAt))
-    else:
-      targetPtr[].valMap[targetK] = initNdlMap()
-    return prs.parseMap(targetPtr[].valMap[targetK])
-  let mapV = ?prs.parseValue()
-  insertKey(targetPtr[], targetK, mapV, lineAt, colAt)
+  insertAtPath(dst, currMapKs, 0, prs, lineAt, colAt)
 
 proc parseMap(prs: var NdlParser, dst: var NdlValue): Result[void, NdlError] =
   # '{'
