@@ -89,6 +89,17 @@ suite "map parser":
     check val["a"]["b"]["c"].valInt.valPos == 1'u64
     check parseDocument("a .b 1").isErr()
     check parseDocument("a. b 1").isErr()
+    check parseDocument("a {b 1} a 2").isErr()
+    check parseDocument("a 1 a {b 2}").isErr()
+    check parseDocument("a.b {c 1} a.b 2").isErr()
+    check parseDocument("a {b 1} a {c 2}").value()["a"]["b"].valInt.valPos == 1'u64
+    check parseDocument("a {b 1} a {c 2}").value()["a"]["c"].valInt.valPos == 2'u64
+    check parseDocument("a {b {x 1}} a {b {y 2}}").value()["a"]["b"]["x"].valInt.valPos == 1'u64
+    check parseDocument("a {b {x 1}} a {b {y 2}}").value()["a"]["b"]["y"].valInt.valPos == 2'u64
+    check parseDocument("a.b {c 1} a.b {d 2}").value()["a"]["b"]["c"].valInt.valPos == 1'u64
+    check parseDocument("a.b {c 1} a.b {d 2}").value()["a"]["b"]["d"].valInt.valPos == 2'u64
+    check parseDocument("a {b 1} a.c 2").value()["a"]["c"].valInt.valPos == 2'u64
+    check parseDocument("a {b 1}").value()["a"]["b"].valInt.valPos == 1'u64
 
   test "quoted key":
     let
@@ -109,3 +120,9 @@ suite "map parser":
   test "no separator between key and value":
     check parseDocument("a{1}").isErr()
     check parseDocument("a\"x\"").isErr()
+
+  test "array map":
+    let val = parseDocument("[{a 1} {b 2}]").value()
+    check val.valArr.len() == 2
+    check val.valArr[0]["a"].valInt.valPos == 1'u64
+    check val.valArr[1]["b"].valInt.valPos == 2'u64
