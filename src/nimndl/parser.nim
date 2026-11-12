@@ -33,7 +33,7 @@ proc parseMap(prs: var NdlParser, dst: var NdlValue): Result[void, NdlError]
 proc parseValue(prs: var NdlParser): Result[NdlValue, NdlError] =
   case prs.current.kind
   of NdlTokenKind.tkLBracket:
-    parseArray(prs)
+    prs.parseArray()
   of NdlTokenKind.tkLBrace:
     var ndlMap = initNdlMap()
     ?prs.parseMap(ndlMap)
@@ -41,13 +41,13 @@ proc parseValue(prs: var NdlParser): Result[NdlValue, NdlError] =
   of NdlTokenKind.tkString, NdlTokenKind.tkRawString,
      NdlTokenKind.tkInt, NdlTokenKind.tkReal,
      NdlTokenKind.tkIdent:
-    parsePrimitive(prs)
+    prs.parsePrimitive()
   of NdlTokenKind.tkQuotedKey:
-    err(parseErrorAt(prs, "single-quoted key cannot be a value"))
+    err(prs.parseErrorAt("single-quoted key cannot be a value"))
   of NdlTokenKind.tkRBracket, NdlTokenKind.tkRBrace:
-    err(parseErrorAt(prs, "unexpected closing bracket"))
+    err(prs.parseErrorAt("unexpected closing bracket"))
   else:
-    err(parseErrorAt(prs, "expected a value"))
+    err(prs.parseErrorAt("expected a value"))
 
 proc parsePrimitive(prs: var NdlParser): Result[NdlValue, NdlError] =
   let currTok = prs.current
@@ -118,19 +118,41 @@ proc parseKey(prs: var NdlParser): Result[string, NdlError] =
     ?prs.advance()
     ok(curr)
   else:
-    err(parseErrorAt(prs, "expected key"))
+    err(prs.parseErrorAt("expected key"))
 
 proc parseKeyPath(prs: var NdlParser): Result[seq[string], NdlError] =
   var mapKs: seq[string] = newSeq[string]()
   mapKs.add(?prs.parseKey())
   while prs.current.kind == NdlTokenKind.tkDot:
     if prs.current.leadingSpace:
-      return err(parseErrorAt(prs, "whitespace before '.'"))
+      return err(prs.parseErrorAt("whitespace before '.'"))
     ?prs.advance()
     if prs.current.leadingSpace:
-      return err(parseErrorAt(prs, "whitespace after '.'"))
+      return err(prs.parseErrorAt("whitespace after '.'"))
     mapKs.add(?prs.parseKey())
   ok(mapKs)
+
+proc ensureMapPath(
+  dst: var NdlValue, mapKs: seq[string], idx: int,
+  lineAt: int, colAt: int): Result[void, NdlError] =
+  if idx >= mapKs.len() - 1:
+    return ok()
+  let currK = mapKs[idx]
+  if currK notin dst.valMap:
+    dst.valMap[currK] = initNdlMap()
+  elif dst.valMap[currK].kind != NdlValueKind.nvMap:
+    return err(NdlError(
+      kind: NdlErrorKind.parseError,
+      parseMsg: "conflicting values for key '" & currK & "'",
+      parseLine: lineAt, parseCol: colAt))
+  ?ensureMapPath(dst.valMap[currK], mapKs, idx + 1, lineAt, colAt)
+  ok()
+
+proc getMapPath(
+  dst: var NdlValue, mapKs: seq[string], idx: int = 0, endIdx: int): var NdlValue =
+  if idx == endIdx:
+    return dst
+  getMapPath(dst.valMap[mapKs[idx]], mapKs, idx + 1, endIdx)
 
 proc insertKey(
   dst: var NdlValue, mapK: string, mapV: NdlValue,
@@ -147,31 +169,31 @@ proc insertKey(
       parseLine: lineAt, parseCol: colAt))
   ok()
 
-proc insertPath(
-  dst: var NdlValue, mapKs: seq[string], mapV: NdlValue, idx: int,
-  lineAt: int, colAt: int): Result[void, NdlError] =
-  if idx == mapKs.len() - 1:
-    return insertKey(dst, mapKs[idx], mapV, lineAt, colAt)
-  let currK = mapKs[idx]
-  if currK notin dst.valMap:
-    dst.valMap[currK] = initNdlMap()
-  elif dst.valMap[currK].kind != NdlValueKind.nvMap:
-    return err(NdlError(
-      kind: NdlErrorKind.parseError,
-      parseMsg: "conflicting values for key '" & currK & "'",
-      parseLine: lineAt, parseCol: colAt))
-  insertPath(dst.valMap[currK], mapKs, mapV, idx + 1, lineAt, colAt)
-
 proc insertPair(dst: var NdlValue, prs: var NdlParser): Result[void, NdlError] =
   let
     lineAt = prs.current.line
     colAt = prs.current.col
     currMapKs = ?prs.parseKeyPath()
+    targetK = currMapKs[^1]
   if prs.current.kind in {NdlTokenKind.tkEof, NdlTokenKind.tkRBrace, NdlTokenKind.tkRBracket}:
     return err(parseErrorAt(prs, "expected value after key"))
   if not prs.current.leadingSpace:
     return err(parseErrorAt(prs, "expected separator between key and value"))
-  insertPath(dst, currMapKs, ?prs.parseValue(), 0, lineAt, colAt)
+
+  ?ensureMapPath(dst, currMapKs, 0, lineAt, colAt)
+  let targetPtr = addr getMapPath(dst, currMapKs, 0, currMapKs.len() - 1)
+  if prs.current.kind == NdlTokenKind.tkLBrace:
+    if targetPtr[].valMap.hasKey(targetK):
+      if targetPtr[].valMap[targetK].kind != NdlValueKind.nvMap:
+        return err(NdlError(
+          kind: NdlErrorKind.parseError,
+          parseMsg: "conflicting values for key '" & targetK & "'",
+          parseLine: lineAt, parseCol: colAt))
+    else:
+      targetPtr[].valMap[targetK] = initNdlMap()
+    return prs.parseMap(targetPtr[].valMap[targetK])
+  let mapV = ?prs.parseValue()
+  insertKey(targetPtr[], targetK, mapV, lineAt, colAt)
 
 proc parseMap(prs: var NdlParser, dst: var NdlValue): Result[void, NdlError] =
   # '{'
@@ -182,9 +204,9 @@ proc parseMap(prs: var NdlParser, dst: var NdlValue): Result[void, NdlError] =
   ?insertPair(dst, prs)
   while prs.current.kind != NdlTokenKind.tkRBrace:
     if prs.current.kind == NdlTokenKind.tkEof:
-      return err(parseErrorAt(prs, "unterminated map"))
+      return err(prs.parseErrorAt("unterminated map"))
     if not prs.current.leadingSpace:
-      return err(parseErrorAt(prs, "expected separator between pairs"))
+      return err(prs.parseErrorAt("expected separator between pairs"))
     ?insertPair(dst, prs)
   # '}'
   ?prs.advance()
@@ -194,7 +216,7 @@ proc parseObject(prs: var NdlParser, dst: var NdlValue): Result[void, NdlError] 
   ?insertPair(dst, prs)
   while prs.current.kind != NdlTokenKind.tkEof:
     if not prs.current.leadingSpace:
-      return err(parseErrorAt(prs, "expected separator between pairs"))
+      return err(prs.parseErrorAt("expected separator between pairs"))
     ?insertPair(dst, prs)
   ok()
 
